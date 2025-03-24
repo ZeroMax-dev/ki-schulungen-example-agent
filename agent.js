@@ -2,14 +2,14 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-import { z } from "zod";
-import { tool } from "@langchain/core/tools";
 import { ChatOpenAI } from "@langchain/openai";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
+import { Serper } from "@langchain/community/tools/serper";
 import { ChatMessageHistory } from "@langchain/community/stores/message/in_memory";
 import { RunnableWithMessageHistory } from "@langchain/core/runnables";
 import { createToolCallingAgent } from "langchain/agents";
 import { AgentExecutor } from "langchain/agents";
+import { tool } from "@langchain/core/tools";
 
 // Check for required API keys
 if (!process.env.OPENAI_API_KEY) {
@@ -25,58 +25,9 @@ const model = new ChatOpenAI({
   temperature: 0,
 });
 
-// Create a custom search tool using the Google Serper API
-const serperSearchTool = tool(
-  async ({ input }) => {
-    console.log(`Searching for: ${input}`);
-    const apiKey = process.env.SERPER_API_KEY;
-    const url = 'https://google.serper.dev/search';
-
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'X-API-KEY': apiKey,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ q: input })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Search failed with status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      
-      // Extract and format the search results
-      let results = [];
-      
-      if (data.organic && data.organic.length > 0) {
-        results = data.organic.slice(0, 5).map(item => ({
-          title: item.title,
-          link: item.link,
-          snippet: item.snippet
-        }));
-      }
-      
-      return JSON.stringify(results);
-    } catch (error) {
-      console.error('Error during search:', error);
-      return `Error performing search: ${error.message}`;
-    }
-  },
-  {
-    name: "google_search",
-    description: "Search Google for information using the Serper API.",
-    schema: z.object({
-      input: z.string().describe("The search query to look up information online"),
-    }),
-  }
-);
-
-// Create a custom LangSmith information tool as a simple tool
+// Create a simple LangSmith information tool
 const langSmithTool = tool(
-  async ({ input }) => {
+  async (input) => {
     // For simplicity, we'll just return some static information about LangSmith
     return `
       LangSmith is a comprehensive platform designed for developing, evaluating, and monitoring large language model (LLM) applications. 
@@ -94,16 +45,16 @@ const langSmithTool = tool(
   },
   {
     name: "langsmith_info",
-    description: "Provides information about LangSmith. For any questions about LangSmith, you must use this tool!",
-    schema: z.object({
-      input: z.string().describe("The question about LangSmith"),
-    }),
+    description: "Provides information about LangSmith. For any questions about LangSmith, use this tool.",
   }
 );
 
 async function setupAgent() {
+  // Initialize the SerpAPI tool
+  const search = new Serper();
+  
   // Define the tools
-  const tools = [serperSearchTool, langSmithTool];
+  const tools = [search, langSmithTool];
 
   // Create the prompt template
   const prompt = ChatPromptTemplate.fromMessages([
