@@ -2,6 +2,7 @@
 import dotenv from "dotenv";
 dotenv.config();
 
+import { HttpsProxyAgent } from "https-proxy-agent";
 import { ChatOpenAI } from "@langchain/openai";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { Serper } from "@langchain/community/tools/serper";
@@ -34,7 +35,7 @@ const model = new ChatOpenAI({
   configuration: {
     // apiKey: process.env.OPENAI_API_KEY,
     // baseURL: "https://api.openai.com/v1",
-    httpAgent: proxyAgent
+    // httpAgent: proxyAgent
   }
 });
 
