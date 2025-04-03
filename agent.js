@@ -20,9 +20,22 @@ if (!process.env.SERPER_API_KEY) {
   throw new Error("SERPER_API_KEY environment variable is required");
 }
 
+// For self-signed certifiactes in the SSL chain
+// process.env.NODE_TLS_REJECT_UNAUTHORIZED = 0;
+
+// Define proxy URL
+const proxyUrl = `http://${process.env.PROXY_USERNAME}:${process.env.PROXY_PASSWORD}@webproxy.prod.d003.loc:8080`;
+// Create proxy agents for HTTP and HTTPS
+const proxyAgent = new HttpsProxyAgent(proxyUrl);
+
 // Initialize the model
 const model = new ChatOpenAI({
   temperature: 0,
+  configuration: {
+    // apiKey: process.env.OPENAI_API_KEY,
+    // baseURL: "https://api.openai.com/v1",
+    httpAgent: proxyAgent
+  }
 });
 
 // Create a simple LangSmith information tool
