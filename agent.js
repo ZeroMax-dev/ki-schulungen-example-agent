@@ -18,7 +18,7 @@ if (!process.env.SERPER_API_KEY) {
 
 // Initialize the model
 const model = new ChatOpenAI({
-  model: "gpt-4o-mini",
+  model: "gpt-5.4-mini",
   temperature: 0,
 });
 
