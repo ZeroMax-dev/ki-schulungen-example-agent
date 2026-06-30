@@ -1,15 +1,11 @@
 // Load environment variables from .env file
 import dotenv from "dotenv";
-dotenv.config();
+dotenv.config({ quiet: true });
 
+import * as z from "zod";
+import { createAgent, tool } from "langchain";
 import { ChatOpenAI } from "@langchain/openai";
-import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { Serper } from "@langchain/community/tools/serper";
-import { ChatMessageHistory } from "@langchain/community/stores/message/in_memory";
-import { RunnableWithMessageHistory } from "@langchain/core/runnables";
-import { createToolCallingAgent } from "langchain/agents";
-import { AgentExecutor } from "langchain/agents";
-import { tool } from "@langchain/core/tools";
+import { MemorySaver } from "@langchain/langgraph";
 
 // Check for required API keys
 if (!process.env.OPENAI_API_KEY) {
@@ -22,16 +18,58 @@ if (!process.env.SERPER_API_KEY) {
 
 // Initialize the model
 const model = new ChatOpenAI({
+  model: "gpt-4o-mini",
   temperature: 0,
 });
 
-// Create a simple LangSmith information tool
+// A custom web-search tool built on the Serper API (https://serper.dev).
+// Building your own tool with `tool()` + a zod schema is the core idea of this
+// workshop. Docs: https://docs.langchain.com/oss/javascript/langchain/tools
+const webSearch = tool(
+  async ({ query }) => {
+    const response = await fetch("https://google.serper.dev/search", {
+      method: "POST",
+      headers: {
+        "X-API-KEY": process.env.SERPER_API_KEY,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ q: query }),
+    });
+
+    if (!response.ok) {
+      return `Web search failed with status ${response.status}`;
+    }
+
+    const data = await response.json();
+
+    // Prefer a direct answer if Serper provides one, otherwise summarize the
+    // top organic results into a compact, model-friendly string.
+    if (data.answerBox?.answer) return String(data.answerBox.answer);
+    if (data.answerBox?.snippet) return String(data.answerBox.snippet);
+
+    const results = (data.organic ?? [])
+      .slice(0, 5)
+      .map((r) => `${r.title}\n${r.snippet ?? ""}\n${r.link}`)
+      .join("\n\n");
+
+    return results || "No results found.";
+  },
+  {
+    name: "web_search",
+    description:
+      "Search the web (Google, via Serper) for current information. Use this for anything that may require up-to-date facts.",
+    schema: z.object({
+      query: z.string().describe("The search query"),
+    }),
+  }
+);
+
+// A simple static tool that returns information about LangSmith.
 const langSmithTool = tool(
-  async (input) => {
-    // For simplicity, we'll just return some static information about LangSmith
+  async ({ question }) => {
     return `
-      LangSmith is a comprehensive platform designed for developing, evaluating, and monitoring large language model (LLM) applications. 
-      
+      LangSmith is a comprehensive platform designed for developing, evaluating, and monitoring large language model (LLM) applications.
+
       Key features:
       - Debug and optimize LLM applications
       - Monitor and track LLM performance
@@ -39,63 +77,38 @@ const langSmithTool = tool(
       - Support for tracing LLM calls and interactions
       - Provides feedback collection mechanisms
       - Evaluations for measuring model performance
-      
-      This is a simplified response about LangSmith for: "${input}"
+
+      This is a simplified response about LangSmith for: "${question}"
     `;
   },
   {
     name: "langsmith_info",
-    description: "Provides information about LangSmith. For any questions about LangSmith, use this tool.",
+    description:
+      "Provides information about LangSmith. For any questions about LangSmith, use this tool.",
+    schema: z.object({
+      question: z.string().describe("The user's question about LangSmith"),
+    }),
   }
 );
 
-async function setupAgent() {
-  // Initialize the SerpAPI tool
-  const search = new Serper();
-  
-  // Define the tools
-  const tools = [search, langSmithTool];
+function setupAgent() {
+  const tools = [webSearch, langSmithTool];
 
-  // Create the prompt template
-  const prompt = ChatPromptTemplate.fromMessages([
-    ["system", "You are a helpful assistant"],
-    ["placeholder", "{chat_history}"],
-    ["human", "{input}"],
-    ["placeholder", "{agent_scratchpad}"],
-  ]);
+  // The checkpointer gives the agent short-term memory: pass the same
+  // `thread_id` across invocations (see example.js) to keep the conversation.
+  const checkpointer = new MemorySaver();
 
-  // Create the agent
-  const agent = await createToolCallingAgent({ 
-    llm: model, 
-    tools, 
-    prompt 
-  });
-
-  // Create the agent executor
-  const agentExecutor = new AgentExecutor({
-    agent,
+  // createAgent builds a LangGraph ReAct-style agent. This replaces the
+  // legacy AgentExecutor / createToolCallingAgent / RunnableWithMessageHistory
+  // stack from LangChain 0.x.
+  const agent = createAgent({
+    model,
     tools,
+    systemPrompt: "You are a helpful assistant",
+    checkpointer,
   });
 
-  // Set up the message history store
-  const store = {};
-
-  function getMessageHistory(sessionId) {
-    if (!(sessionId in store)) {
-      store[sessionId] = new ChatMessageHistory();
-    }
-    return store[sessionId];
-  }
-
-  // Create the agent with chat history
-  const agentWithChatHistory = new RunnableWithMessageHistory({
-    runnable: agentExecutor,
-    getMessageHistory,
-    inputMessagesKey: "input",
-    historyMessagesKey: "chat_history",
-  });
-
-  return agentWithChatHistory;
+  return agent;
 }
 
 // Export the setup function
