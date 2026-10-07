@@ -1,11 +1,9 @@
 import setupAgent from './agent.js';
 
-// Helper: pull the text out of the agent's final message.
+// Helper: the agent's answer is its last message. `.text` joins all text
+// content of a message (content can be a string or a list of content blocks).
 function lastReply(result) {
-  const message = result.messages[result.messages.length - 1];
-  return typeof message.content === "string"
-    ? message.content
-    : JSON.stringify(message.content);
+  return result.messages.at(-1).text;
 }
 
 async function main() {

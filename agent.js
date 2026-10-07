@@ -1,10 +1,8 @@
 // Load environment variables from .env file
-import dotenv from "dotenv";
-dotenv.config({ quiet: true });
+import "dotenv/config";
 
 import * as z from "zod";
 import { createAgent, tool } from "langchain";
-import { ChatOpenAI } from "@langchain/openai";
 import { MemorySaver } from "@langchain/langgraph";
 
 // Check for required API keys
@@ -15,12 +13,6 @@ if (!process.env.OPENAI_API_KEY) {
 if (!process.env.SERPER_API_KEY) {
   throw new Error("SERPER_API_KEY environment variable is required");
 }
-
-// Initialize the model
-const model = new ChatOpenAI({
-  model: "gpt-5.4-mini",
-  temperature: 0,
-});
 
 // A custom web-search tool built on the Serper API (https://serper.dev).
 // Building your own tool with `tool()` + a zod schema is the core idea of this
@@ -100,11 +92,13 @@ function setupAgent() {
 
   // createAgent builds a LangGraph ReAct-style agent. This replaces the
   // legacy AgentExecutor / createToolCallingAgent / RunnableWithMessageHistory
-  // stack from LangChain 0.x.
+  // stack from LangChain 0.x. The model is given as a "provider:model" string;
+  // LangChain resolves it to ChatOpenAI from @langchain/openai for you.
+  // Docs: https://docs.langchain.com/oss/javascript/langchain/agents
   const agent = createAgent({
-    model,
+    model: "openai:gpt-5.4-mini",
     tools,
-    systemPrompt: "You are a helpful assistant",
+    systemPrompt: "You are a helpful assistant.",
     checkpointer,
   });
 
