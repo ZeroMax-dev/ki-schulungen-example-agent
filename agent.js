@@ -3,6 +3,7 @@ import "dotenv/config";
 
 import * as z from "zod";
 import { createAgent, tool } from "langchain";
+import { ChatOpenAI } from "@langchain/openai";
 import { MemorySaver } from "@langchain/langgraph";
 
 // Check for required API keys
@@ -13,6 +14,14 @@ if (!process.env.OPENAI_API_KEY) {
 if (!process.env.SERPER_API_KEY) {
   throw new Error("SERPER_API_KEY environment variable is required");
 }
+
+// gpt-6-luna is a reasoning model. Reasoning + function tools requires OpenAI's
+// Responses API, so we turn it on explicitly.
+const model = new ChatOpenAI({
+  model: "gpt-6-luna",
+  reasoning: { effort: "medium" }, // "none" | "low" | "medium" | "high" | ...
+  useResponsesApi: true,
+});
 
 // A custom web-search tool built on the Serper API (https://serper.dev).
 // Building your own tool with `tool()` + a zod schema is the core idea of this
@@ -92,11 +101,10 @@ function setupAgent() {
 
   // createAgent builds a LangGraph ReAct-style agent. This replaces the
   // legacy AgentExecutor / createToolCallingAgent / RunnableWithMessageHistory
-  // stack from LangChain 0.x. The model is given as a "provider:model" string;
-  // LangChain resolves it to ChatOpenAI from @langchain/openai for you.
+  // stack from LangChain 0.x.
   // Docs: https://docs.langchain.com/oss/javascript/langchain/agents
   const agent = createAgent({
-    model: "openai:gpt-5.4-mini",
+    model,
     tools,
     systemPrompt: "You are a helpful assistant.",
     checkpointer,
